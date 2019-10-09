@@ -1,28 +1,29 @@
 package main
 
-// Package is called aw
-import "github.com/deanishe/awgo"
+import (
+	aw "github.com/deanishe/awgo"
+	"log"
+)
 
-// Workflow is the main API
 var wf *aw.Workflow
 
 func init() {
-    // Create a new Workflow using default settings.
-    // Critical settings are provided by Alfred via environment variables,
-    // so this *will* die in flames if not run in an Alfred-like environment.
-    wf = aw.New()
+	wf = aw.New()
 }
 
-// Your workflow starts here
 func run() {
-    // Add a "Script Filter" result
-    wf.NewItem("First result!")
-    // Send results to Alfred
-    wf.SendFeedback()
+	var query string
+
+	if args := wf.Args(); len(args) > 0 {
+		query = args[0]
+	}
+
+	log.Printf("run: query=%s\n", query)
+	wf.NewItem(query)
+	wf.WarnEmpty("Can't find repository or user", "Try a different query?")
+	wf.SendFeedback()
 }
 
 func main() {
-    // Wrap your entry point with Run() to catch and log panics and
-    // show an error in Alfred instead of silently dying
-    wf.Run(run)
+	wf.Run(run)
 }
