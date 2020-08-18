@@ -1,11 +1,4 @@
-# Alfred Workflow for GitHub
+# GitHub Workflow for Alfred 4
 
-You can search GitHub repositories and users.
+You can search GitHub repositories.
 
-## Configuration
-
-You can sign in GitHub.
-
-```
-gh > login
-```
