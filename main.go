@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+
 	aw "github.com/deanishe/awgo"
-	"log"
 )
 
 var wf *aw.Workflow
@@ -11,17 +13,29 @@ func init() {
 	wf = aw.New()
 }
 
-func run() {
-	var query string
+func auth() {
+	alfredVars := map[string]string{"email": "test@test.com"}
+	b, _ := json.Marshal(map[string]interface{}{"alfredworkflow": map[string]interface{}{"variables": alfredVars}})
+	fmt.Println(string(b))
+}
 
-	if args := wf.Args(); len(args) > 0 {
-		query = args[0]
+func run() {
+	args := wf.Args()
+	if len(args) == 0 {
+		wf.Fatal("invalid command arguments")
+		return
 	}
 
-	log.Printf("run: query=%s\n", query)
-	wf.NewItem(query)
-	wf.WarnEmpty("Can't find repository or user", "Try a different query?")
-	wf.SendFeedback()
+	commandOperator := args[0]
+
+	switch commandOperator {
+	case "auth":
+		auth()
+	}
+
+	// wf.NewItem(query)
+	// wf.WarnEmpty("Can't find repository or user", "Try a different query?")
+	// wf.SendFeedback()
 }
 
 func main() {
