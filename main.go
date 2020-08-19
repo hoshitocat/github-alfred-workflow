@@ -13,9 +13,23 @@ func init() {
 	wf = aw.New()
 }
 
-func auth() {
-	alfredVars := map[string]string{"email": "test@test.com"}
-	b, _ := json.Marshal(map[string]interface{}{"alfredworkflow": map[string]interface{}{"variables": alfredVars}})
+type Response struct {
+	AlfredWorkflow `json:"alfredworkflow"`
+}
+
+type AlfredWorkflow struct {
+	Variables interface{} `json:"variables"`
+}
+
+type AuthVariables struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+func auth(token string) {
+	vars := AuthVariables{"hoshitocat", "hoshitocat@gmail.com"}
+	resp := Response{AlfredWorkflow{Variables: vars}}
+	b, _ := json.Marshal(resp)
 	fmt.Println(string(b))
 }
 
@@ -27,10 +41,10 @@ func run() {
 	}
 
 	commandOperator := args[0]
-
 	switch commandOperator {
 	case "auth":
-		auth()
+		token := args[1]
+		auth(token)
 	}
 
 	// wf.NewItem(query)
