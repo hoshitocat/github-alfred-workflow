@@ -1,10 +1,13 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 
 	aw "github.com/deanishe/awgo"
+	github "github.com/shurcooL/githubv4"
+
+	"golang.org/x/oauth2"
 )
 
 var wf *aw.Workflow
@@ -27,10 +30,30 @@ type AuthVariables struct {
 }
 
 func auth(token string) {
-	vars := AuthVariables{"hoshitocat", "hoshitocat@gmail.com"}
-	resp := Response{AlfredWorkflow{Variables: vars}}
-	b, _ := json.Marshal(resp)
-	fmt.Println(string(b))
+	ctx := context.Background()
+	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	httpClient := oauth2.NewClient(ctx, src)
+	client := github.NewClient(httpClient)
+
+	var query struct {
+		Viewer struct {
+			Login github.String
+			Email github.String
+			Url   github.URI
+		}
+	}
+	err := client.Query(ctx, &query, nil)
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	fmt.Println(query)
+
+	// vars := AuthVariables{"hoshitocat", "hoshitocat@gmail.com"}
+	// resp := Response{AlfredWorkflow{Variables: vars}}
+	// b, _ := json.Marshal(resp)
+	// fmt.Println(string(b))
 }
 
 func run() {
