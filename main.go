@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 
 	aw "github.com/deanishe/awgo"
 	github "github.com/shurcooL/githubv4"
@@ -43,6 +44,18 @@ func auth(token string) {
 		}
 	}
 	err := client.Query(ctx, &query, nil)
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	fp, err := os.Create(os.Getenv("HOME") + ".config/github-alfred-workflow/credentials.json")
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	_, err = fp.WriteString(token)
 	if err != nil {
 		wf.FatalError(err)
 		return
