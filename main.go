@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -25,9 +26,11 @@ type AlfredWorkflow struct {
 	Variables interface{} `json:"variables"`
 }
 
-type AuthVariables struct {
+type AuthUser struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	Token string `json:"token"`
+	URL   string `json:"url"`
 }
 
 func auth(token string) {
@@ -49,13 +52,31 @@ func auth(token string) {
 		return
 	}
 
-	fp, err := os.Create(os.Getenv("HOME") + ".config/github-alfred-workflow/credentials.json")
+	err = os.MkdirAll(os.Getenv("HOME")+"/.config/github-alfred-workflow", 0755)
 	if err != nil {
 		wf.FatalError(err)
 		return
 	}
 
-	_, err = fp.WriteString(token)
+	fp, err := os.Create(os.Getenv("HOME") + "/.config/github-alfred-workflow/credentials.json")
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	authUser := AuthUser{
+		Name:  string(query.Viewer.Login),
+		Email: string(query.Viewer.Email),
+		Token: token,
+		URL:   query.Viewer.Url.String(),
+	}
+	credentials, err := json.Marshal(authUser)
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	_, err = fp.Write(credentials)
 	if err != nil {
 		wf.FatalError(err)
 		return
