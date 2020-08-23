@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 
 	aw "github.com/deanishe/awgo"
@@ -12,7 +13,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var wf *aw.Workflow
+var (
+	wf          *aw.Workflow
+	credFileDir = os.Getenv("HOME") + "/.config/github-alfred-workflow"
+	credFile    = credFileDir + "/credentials.json"
+)
 
 func init() {
 	wf = aw.New()
@@ -65,7 +70,7 @@ func auth(token string) {
 		return
 	}
 
-	err = os.MkdirAll(os.Getenv("HOME")+"/.config/github-alfred-workflow", 0755)
+	err = os.MkdirAll(credFileDir, 0755)
 	if err != nil {
 		resp := AuthResponse{
 			Title: "Authentication Failed",
@@ -79,7 +84,7 @@ func auth(token string) {
 		return
 	}
 
-	fp, err := os.Create(os.Getenv("HOME") + "/.config/github-alfred-workflow/credentials.json")
+	fp, err := os.Create(credFile)
 	if err != nil {
 		resp := AuthResponse{
 			Title: "Authentication Failed",
@@ -138,6 +143,39 @@ func auth(token string) {
 	fmt.Println(string(b))
 }
 
+func searchRepo(name string) {
+	b, err := ioutil.ReadFile(credFile)
+	if err != nil {
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
+		return
+	}
+
+	var authUser AuthUser
+	err = json.Unmarshal(b, &authUser)
+	if err != nil {
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
+		return
+	}
+
+	fmt.Println(authUser)
+}
+
 func run() {
 	args := wf.Args()
 	if len(args) == 0 {
@@ -150,6 +188,8 @@ func run() {
 	case "auth":
 		token := args[1]
 		auth(token)
+	case "search":
+		searchRepo(args[1])
 	}
 
 	// wf.NewItem(query)
