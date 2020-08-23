@@ -33,6 +33,11 @@ type AuthUser struct {
 	URL   string `json:"url"`
 }
 
+type AuthResponse struct {
+	Title string `json:"title"`
+	Text  string `json:"text"`
+}
+
 func auth(token string) {
 	ctx := context.Background()
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
@@ -48,19 +53,43 @@ func auth(token string) {
 	}
 	err := client.Query(ctx, &query, nil)
 	if err != nil {
-		wf.FatalError(err)
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
 		return
 	}
 
 	err = os.MkdirAll(os.Getenv("HOME")+"/.config/github-alfred-workflow", 0755)
 	if err != nil {
-		wf.FatalError(err)
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
 		return
 	}
 
 	fp, err := os.Create(os.Getenv("HOME") + "/.config/github-alfred-workflow/credentials.json")
 	if err != nil {
-		wf.FatalError(err)
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
 		return
 	}
 
@@ -72,22 +101,41 @@ func auth(token string) {
 	}
 	credentials, err := json.Marshal(authUser)
 	if err != nil {
-		wf.FatalError(err)
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
 		return
 	}
 
 	_, err = fp.Write(credentials)
 	if err != nil {
-		wf.FatalError(err)
+		resp := AuthResponse{
+			Title: "Authentication Failed",
+			Text:  err.Error(),
+		}
+		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+		if e != nil {
+			wf.FatalError(err)
+		}
+		fmt.Println(string(b))
 		return
 	}
 
-	fmt.Println(query)
-
-	// vars := AuthVariables{"hoshitocat", "hoshitocat@gmail.com"}
-	// resp := Response{AlfredWorkflow{Variables: vars}}
-	// b, _ := json.Marshal(resp)
-	// fmt.Println(string(b))
+	resp := AuthResponse{
+		Title: "Authentication Succeeded",
+		Text:  fmt.Sprintf("Hello, %s", authUser.Name),
+	}
+	b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+	if e != nil {
+		wf.FatalError(err)
+	}
+	fmt.Println(string(b))
 }
 
 func run() {
