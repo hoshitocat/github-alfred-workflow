@@ -173,7 +173,39 @@ func searchRepo(name string) {
 		return
 	}
 
-	fmt.Println(authUser)
+	ctx := context.Background()
+	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: authUser.Token})
+	httpClient := oauth2.NewClient(ctx, src)
+	client := github.NewClient(httpClient)
+
+	var query struct {
+		Search struct {
+			PageInfo struct {
+				StartCursor github.String
+			}
+			Edges []struct {
+				Cursor github.String
+				Node   struct {
+					Repository struct {
+						NameWithOwner github.String
+						URL           github.URI
+					} `graphql:"... on Repository"`
+				}
+			}
+		} `graphql:"search(query: $name, type: REPOSITORY, first: 100)"`
+	}
+
+	err = client.Query(ctx, &query, map[string]interface{}{"name": github.String(fmt.Sprintf("%s in:name", name))})
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	for _, repo := range query.Search.Edges {
+		wf.NewItem(string(repo.Node.Repository.NameWithOwner))
+	}
+
+	wf.SendFeedback()
 }
 
 func run() {
