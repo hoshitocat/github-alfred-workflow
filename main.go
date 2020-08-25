@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 
 	aw "github.com/deanishe/awgo"
 	github "github.com/shurcooL/githubv4"
@@ -143,7 +144,7 @@ func auth(token string) {
 	fmt.Println(string(b))
 }
 
-func searchRepo(name string) {
+func search(name string) {
 	b, err := ioutil.ReadFile(credFile)
 	if err != nil {
 		resp := AuthResponse{
@@ -202,7 +203,20 @@ func searchRepo(name string) {
 	}
 
 	for _, repo := range query.Search.Edges {
-		wf.NewItem(string(repo.Node.Repository.NameWithOwner))
+		wf.NewItem(string(repo.Node.Repository.NameWithOwner)).
+			Autocomplete(string(repo.Node.Repository.NameWithOwner)).
+			Arg(fmt.Sprintf("%s %s", repo.Node.Repository.NameWithOwner, repo.Node.Repository.URL.String())).
+			Valid(true)
+	}
+
+	wf.SendFeedback()
+}
+
+func action(repoName, repoURL string) {
+	err := exec.Command("open", repoURL).Start()
+	if err != nil {
+		wf.FatalError(err)
+		return
 	}
 
 	wf.SendFeedback()
@@ -221,12 +235,15 @@ func run() {
 		token := args[1]
 		auth(token)
 	case "search":
-		searchRepo(args[1])
+		var name string
+		if len(args) > 1 {
+			name = args[1]
+		}
+		search(name)
+	case "action":
+		repoName, repoURL := args[1], args[2]
+		action(repoName, repoURL)
 	}
-
-	// wf.NewItem(query)
-	// wf.WarnEmpty("Can't find repository or user", "Try a different query?")
-	// wf.SendFeedback()
 }
 
 func main() {
