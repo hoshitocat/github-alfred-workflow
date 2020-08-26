@@ -203,23 +203,49 @@ func search(name string) {
 	}
 
 	for _, repo := range query.Search.Edges {
-		wf.NewItem(string(repo.Node.Repository.NameWithOwner)).
-			Autocomplete(string(repo.Node.Repository.NameWithOwner)).
-			Arg(fmt.Sprintf("%s %s", repo.Node.Repository.NameWithOwner, repo.Node.Repository.URL.String())).
-			Valid(true)
+		r := repo.Node.Repository
+		name, url := string(r.NameWithOwner), r.URL.String()
+		j, err := json.Marshal(map[string]string{"name": name, "url": url})
+		if err != nil {
+			wf.FatalError(err)
+			return
+		}
+		wf.NewItem(name).Autocomplete(name).Arg(string(j)).Valid(true)
 	}
 
 	wf.SendFeedback()
 }
 
-func action(repoName, repoURL string) {
-	err := exec.Command("open", repoURL).Start()
+type Repository struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+func action(operation string) {
+	b, err := ioutil.ReadFile("./repository.json")
+	if err != nil {
+		wf.FatalError(err)
+	}
+
+	repo := Repository{}
+	err = json.Unmarshal(b, &repo)
+	if err != nil {
+		wf.FatalError(err)
+	}
+
+	url := repo.URL
+	switch operation {
+	case "pulls":
+		url += "/pulls"
+	case "issues":
+		url += "/issues"
+	}
+
+	err = exec.Command("open", url).Start()
 	if err != nil {
 		wf.FatalError(err)
 		return
 	}
-
-	wf.SendFeedback()
 }
 
 func run() {
@@ -241,8 +267,7 @@ func run() {
 		}
 		search(name)
 	case "action":
-		repoName, repoURL := args[1], args[2]
-		action(repoName, repoURL)
+		action(args[1])
 	}
 }
 
