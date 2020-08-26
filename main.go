@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 
 	aw "github.com/deanishe/awgo"
 	github "github.com/shurcooL/githubv4"
@@ -144,7 +145,7 @@ func auth(token string) {
 	fmt.Println(string(b))
 }
 
-func search(name string) {
+func search(searchQuery string) {
 	b, err := ioutil.ReadFile(credFile)
 	if err != nil {
 		resp := AuthResponse{
@@ -193,10 +194,17 @@ func search(name string) {
 					} `graphql:"... on Repository"`
 				}
 			}
-		} `graphql:"search(query: $name, type: REPOSITORY, first: 100)"`
+		} `graphql:"search(query: $searchQuery, type: REPOSITORY, first: 100)"`
 	}
 
-	err = client.Query(ctx, &query, map[string]interface{}{"name": github.String(fmt.Sprintf("%s in:name", name))})
+	searchQueries := strings.SplitN(searchQuery, "/", 2)
+	var githubQueryStr string
+	if len(searchQueries) == 1 {
+		githubQueryStr = fmt.Sprintf("%s in:name", searchQueries[0])
+	} else {
+		githubQueryStr = fmt.Sprintf("user:%s %s in:name", searchQueries[0], searchQueries[1])
+	}
+	err = client.Query(ctx, &query, map[string]interface{}{"searchQuery": github.String(githubQueryStr)})
 	if err != nil {
 		wf.FatalError(err)
 		return
