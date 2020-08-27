@@ -134,6 +134,47 @@ func auth(token string) {
 		return
 	}
 
+	var ownRepositoriesQuery struct {
+		Viewer struct {
+			Repositories struct {
+				PageInfo struct {
+					StartCursor github.String
+					EndCursor   github.String
+					HasNextPage github.Boolean
+				}
+				Edges []struct {
+					Node struct {
+						Repository struct {
+							NameWithOwner github.String
+							URL           github.URI
+						} `graphql:"... on Repository"`
+					}
+				}
+			} `graphql:"repositories(first: 100, after: $after, affiliations:[OWNER, COLLABORATOR, ORGANIZATION_MEMBER], ownerAffiliations:[OWNER, ORGANIZATION_MEMBER, COLLABORATOR])"`
+		}
+	}
+	err = client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": (*github.String)(nil)})
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	for _, repo := range ownRepositoriesQuery.Viewer.Repositories.Edges {
+		name, url := string(repo.Node.Repository.NameWithOwner), repo.Node.Repository.URL.String()
+		j, err := json.Marshal(map[string]string{"name": name, "url": url})
+		if err != nil {
+			fmt.Println("error: 165: " + err.Error())
+			// wf.FatalError(err)
+			return
+		}
+		err = wf.Cache.Store("repositories", j)
+		if err != nil {
+			fmt.Println("error: 171: " + err.Error())
+			// wf.FatalError(err)
+			return
+		}
+	}
+
 	resp := AuthResponse{
 		Title: "Authentication Succeeded",
 		Text:  fmt.Sprintf("Hello, %s", authUser.Name),
@@ -218,44 +259,6 @@ func search(searchQuery string) {
 			return
 		}
 		wf.NewItem(name).Autocomplete(name).Arg(string(j)).Valid(true)
-	}
-
-	var ownRepositoriesQuery struct {
-		Viewer struct {
-			Repositories struct {
-				PageInfo struct {
-					StartCursor github.String
-					EndCursor   github.String
-					HasNextPage github.Boolean
-				} `graphql:"repositories(first: 100, after: $after, affiliations:[OWNER, COLLABORATOR, ORGANIZATION_MEMBER], ownerAffiliations:[OWNER, ORGANIZATION_MEMBER, COLLABORATOR])"`
-				Edges []struct {
-					Node struct {
-						NameWithOwner github.String
-						Url           github.String
-					} `graphql:"... on Repository"`
-				}
-			}
-		}
-	}
-	err = client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": nil})
-	if err != nil {
-		wf.FatalError(err)
-		return
-	}
-
-	for _, repo := range query.Search.Edges {
-		r := repo.Node.Repository
-		name, url := string(r.NameWithOwner), r.URL.String()
-		j, err := json.Marshal(map[string]string{"name": name, "url": url})
-		if err != nil {
-			wf.FatalError(err)
-			return
-		}
-		err = wf.Cache.Store("repositories", j)
-		if err != nil {
-			wf.FatalError(err)
-			return
-		}
 	}
 
 	wf.SendFeedback()
