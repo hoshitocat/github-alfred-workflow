@@ -196,7 +196,6 @@ func search(searchQuery string) {
 			}
 		} `graphql:"search(query: $searchQuery, type: REPOSITORY, first: 100)"`
 	}
-
 	searchQueries := strings.SplitN(searchQuery, "/", 2)
 	var githubQueryStr string
 	if len(searchQueries) == 1 {
@@ -221,7 +220,49 @@ func search(searchQuery string) {
 		wf.NewItem(name).Autocomplete(name).Arg(string(j)).Valid(true)
 	}
 
+	var ownRepositoriesQuery struct {
+		Viewer struct {
+			Repositories struct {
+				PageInfo struct {
+					StartCursor github.String
+					EndCursor   github.String
+					HasNextPage github.Boolean
+				} `graphql:"repositories(first: 100, after: $after, affiliations:[OWNER, COLLABORATOR, ORGANIZATION_MEMBER], ownerAffiliations:[OWNER, ORGANIZATION_MEMBER, COLLABORATOR])"`
+				Edges []struct {
+					Node struct {
+						NameWithOwner github.String
+						Url           github.String
+					} `graphql:"... on Repository"`
+				}
+			}
+		}
+	}
+	err = client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": nil})
+	if err != nil {
+		wf.FatalError(err)
+		return
+	}
+
+	for _, repo := range query.Search.Edges {
+		r := repo.Node.Repository
+		name, url := string(r.NameWithOwner), r.URL.String()
+		j, err := json.Marshal(map[string]string{"name": name, "url": url})
+		if err != nil {
+			wf.FatalError(err)
+			return
+		}
+		err = wf.Cache.Store("repositories", j)
+		if err != nil {
+			wf.FatalError(err)
+			return
+		}
+	}
+
 	wf.SendFeedback()
+}
+
+func cacheUserRepositories() {
+
 }
 
 type Repository struct {
