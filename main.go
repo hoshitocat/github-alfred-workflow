@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"os/exec"
-	"strings"
 
 	aw "github.com/deanishe/awgo"
 	github "github.com/shurcooL/githubv4"
@@ -15,11 +13,12 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var (
-	wf          *aw.Workflow
-	credFileDir = os.Getenv("HOME") + "/.config/github-alfred-workflow"
-	credFile    = credFileDir + "/credentials.json"
+const (
+	cacheKeyAuth         = "auth.json"
+	cacheKeyRepositories = "repositories.json"
 )
+
+var wf *aw.Workflow
 
 func init() {
 	wf = aw.New()
@@ -43,6 +42,11 @@ type AuthUser struct {
 type AuthResponse struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
+}
+
+type Repository struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 func auth(token string) {
@@ -72,41 +76,13 @@ func auth(token string) {
 		return
 	}
 
-	err = os.MkdirAll(credFileDir, 0755)
-	if err != nil {
-		resp := AuthResponse{
-			Title: "Authentication Failed",
-			Text:  err.Error(),
-		}
-		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
-		if e != nil {
-			wf.FatalError(err)
-		}
-		fmt.Println(string(b))
-		return
-	}
-
-	fp, err := os.Create(credFile)
-	if err != nil {
-		resp := AuthResponse{
-			Title: "Authentication Failed",
-			Text:  err.Error(),
-		}
-		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
-		if e != nil {
-			wf.FatalError(err)
-		}
-		fmt.Println(string(b))
-		return
-	}
-
 	authUser := AuthUser{
 		Name:  string(query.Viewer.Login),
 		Email: string(query.Viewer.Email),
 		Token: token,
 		URL:   query.Viewer.Url.String(),
 	}
-	credentials, err := json.Marshal(authUser)
+	err = wf.Cache.StoreJSON(cacheKeyAuth, authUser)
 	if err != nil {
 		resp := AuthResponse{
 			Title: "Authentication Failed",
@@ -120,18 +96,28 @@ func auth(token string) {
 		return
 	}
 
-	_, err = fp.Write(credentials)
-	if err != nil {
-		resp := AuthResponse{
-			Title: "Authentication Failed",
-			Text:  err.Error(),
+	resp := AuthResponse{
+		Title: "Authentication Succeeded",
+		Text:  fmt.Sprintf("Hello, %s", authUser.Name),
+	}
+	b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
+	if e != nil {
+		wf.FatalError(err)
+	}
+	fmt.Println(string(b))
+}
+
+func fetchOwnRepositories(ctx context.Context, client *github.Client) ([]*Repository, error) {
+	if wf.Cache.Exists(cacheKeyRepositories) {
+		var repositories struct {
+			Repositories []*Repository `json:"repositories"`
 		}
-		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
-		if e != nil {
-			wf.FatalError(err)
-		}
-		fmt.Println(string(b))
-		return
+		 err := wf.Cache.LoadJSON(cacheKeyRepositories, &repositories)
+		 if err != nil {
+		 	return nil, err
+		 }
+
+		 return repositories.Repositories, nil
 	}
 
 	var ownRepositoriesQuery struct {
@@ -153,64 +139,37 @@ func auth(token string) {
 			} `graphql:"repositories(first: 100, after: $after, affiliations:[OWNER, COLLABORATOR, ORGANIZATION_MEMBER], ownerAffiliations:[OWNER, ORGANIZATION_MEMBER, COLLABORATOR])"`
 		}
 	}
-	err = client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": (*github.String)(nil)})
+	err := client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": (*github.String)(nil)})
 	if err != nil {
-		wf.FatalError(err)
-		return
+		return nil, err
 	}
 
+	var repositories []*Repository
 	for _, repo := range ownRepositoriesQuery.Viewer.Repositories.Edges {
-		name, url := string(repo.Node.Repository.NameWithOwner), repo.Node.Repository.URL.String()
-		j, err := json.Marshal(map[string]string{"name": name, "url": url})
-		if err != nil {
-			wf.FatalError(err)
-			return
-		}
-		err = wf.Cache.Store("repositories", j)
-		if err != nil {
-			wf.FatalError(err)
-			return
-		}
+		repositories = append(repositories, &Repository{
+			Name: string(repo.Node.Repository.NameWithOwner),
+			URL:  repo.Node.Repository.URL.String(),
+		})
 	}
 
-	resp := AuthResponse{
-		Title: "Authentication Succeeded",
-		Text:  fmt.Sprintf("Hello, %s", authUser.Name),
+	j, err := json.Marshal(map[string]interface{}{"repositories": repositories})
+	if err != nil {
+		return nil, err
 	}
-	b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
-	if e != nil {
-		wf.FatalError(err)
+
+	err = wf.Cache.Store(cacheKeyRepositories, j)
+	if err != nil {
+		return nil, err
 	}
-	fmt.Println(string(b))
+
+	return repositories, nil
 }
 
 func search(searchQuery string) {
-	b, err := ioutil.ReadFile(credFile)
-	if err != nil {
-		resp := AuthResponse{
-			Title: "Authentication Failed",
-			Text:  err.Error(),
-		}
-		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
-		if e != nil {
-			wf.FatalError(err)
-		}
-		fmt.Println(string(b))
-		return
-	}
-
 	var authUser AuthUser
-	err = json.Unmarshal(b, &authUser)
+	err := wf.Cache.LoadJSON(cacheKeyAuth, &authUser)
 	if err != nil {
-		resp := AuthResponse{
-			Title: "Authentication Failed",
-			Text:  err.Error(),
-		}
-		b, e := json.Marshal(Response{AlfredWorkflow{Variables: resp}})
-		if e != nil {
-			wf.FatalError(err)
-		}
-		fmt.Println(string(b))
+		wf.FatalError(err)
 		return
 	}
 
@@ -218,53 +177,23 @@ func search(searchQuery string) {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: authUser.Token})
 	httpClient := oauth2.NewClient(ctx, src)
 	client := github.NewClient(httpClient)
-
-	var query struct {
-		Search struct {
-			PageInfo struct {
-				StartCursor github.String
-			}
-			Edges []struct {
-				Cursor github.String
-				Node   struct {
-					Repository struct {
-						NameWithOwner github.String
-						URL           github.URI
-					} `graphql:"... on Repository"`
-				}
-			}
-		} `graphql:"search(query: $searchQuery, type: REPOSITORY, first: 100)"`
-	}
-	searchQueries := strings.SplitN(searchQuery, "/", 2)
-	var githubQueryStr string
-	if len(searchQueries) == 1 {
-		githubQueryStr = fmt.Sprintf("%s in:name", searchQueries[0])
-	} else {
-		githubQueryStr = fmt.Sprintf("user:%s %s in:name", searchQueries[0], searchQueries[1])
-	}
-	err = client.Query(ctx, &query, map[string]interface{}{"searchQuery": github.String(githubQueryStr)})
+	repositories, err := fetchOwnRepositories(ctx, client)
 	if err != nil {
 		wf.FatalError(err)
 		return
 	}
 
-	for _, repo := range query.Search.Edges {
-		r := repo.Node.Repository
-		name, url := string(r.NameWithOwner), r.URL.String()
-		j, err := json.Marshal(map[string]string{"name": name, "url": url})
+	for _, r := range repositories {
+		b, err := json.Marshal(r)
 		if err != nil {
 			wf.FatalError(err)
 			return
 		}
-		wf.NewItem(name).Autocomplete(name).Arg(string(j)).Valid(true)
+
+		wf.NewItem(r.Name).Autocomplete(r.Name).Arg(string(b)).Valid(true)
 	}
 
 	wf.SendFeedback()
-}
-
-type Repository struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
 }
 
 func action(operation string) {
