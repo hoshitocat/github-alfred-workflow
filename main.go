@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os/exec"
+	"strings"
 
 	aw "github.com/deanishe/awgo"
 	github "github.com/shurcooL/githubv4"
@@ -184,6 +185,10 @@ func search(searchQuery string) {
 	}
 
 	for _, r := range repositories {
+		if !strings.Contains(r.Name, searchQuery) {
+			continue
+		}
+
 		b, err := json.Marshal(r)
 		if err != nil {
 			wf.FatalError(err)
