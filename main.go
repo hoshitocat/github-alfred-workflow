@@ -163,14 +163,12 @@ func auth(token string) {
 		name, url := string(repo.Node.Repository.NameWithOwner), repo.Node.Repository.URL.String()
 		j, err := json.Marshal(map[string]string{"name": name, "url": url})
 		if err != nil {
-			fmt.Println("error: 165: " + err.Error())
-			// wf.FatalError(err)
+			wf.FatalError(err)
 			return
 		}
 		err = wf.Cache.Store("repositories", j)
 		if err != nil {
-			fmt.Println("error: 171: " + err.Error())
-			// wf.FatalError(err)
+			wf.FatalError(err)
 			return
 		}
 	}
@@ -262,10 +260,6 @@ func search(searchQuery string) {
 	}
 
 	wf.SendFeedback()
-}
-
-func cacheUserRepositories() {
-
 }
 
 type Repository struct {
