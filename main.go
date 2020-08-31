@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os/exec"
 	"strings"
+	"time"
 
 	aw "github.com/deanishe/awgo"
 	github "github.com/shurcooL/githubv4"
@@ -17,6 +18,7 @@ import (
 const (
 	cacheKeyAuth         = "auth.json"
 	cacheKeyRepositories = "repositories.json"
+	cacheMaxAge          = time.Hour * 24 * 30
 )
 
 var wf *aw.Workflow
@@ -158,6 +160,7 @@ func fetchOwnRepositories(ctx context.Context, client *github.Client) ([]*Reposi
 		return nil, err
 	}
 
+	wf.Cache.Expired(cacheKeyRepositories, cacheMaxAge)
 	err = wf.Cache.Store(cacheKeyRepositories, j)
 	if err != nil {
 		return nil, err
