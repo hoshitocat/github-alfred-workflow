@@ -113,12 +113,12 @@ func fetchOwnRepositories(ctx context.Context, client *github.Client) ([]*Reposi
 		var repositories struct {
 			Repositories []*Repository `json:"repositories"`
 		}
-		 err := wf.Cache.LoadJSON(cacheKeyRepositories, &repositories)
-		 if err != nil {
-		 	return nil, err
-		 }
+		err := wf.Cache.LoadJSON(cacheKeyRepositories, &repositories)
+		if err != nil {
+			return nil, err
+		}
 
-		 return repositories.Repositories, nil
+		return repositories.Repositories, nil
 	}
 
 	var ownRepositoriesQuery struct {
