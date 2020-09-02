@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os/exec"
@@ -21,10 +22,19 @@ const (
 	cacheMaxAge          = time.Hour * 24 * 30
 )
 
-var wf *aw.Workflow
+var (
+	wf         *aw.Workflow
+	ErrNoCache = errors.New("no cache")
+)
 
 func init() {
 	wf = aw.New()
+}
+
+type PageInfo struct {
+	StartCursor string `json:"start_cursor"`
+	EndCursor   string `json:"end_cursor"`
+	HasNextPage bool   `json:"has_next_page"`
 }
 
 type Response struct {
@@ -110,19 +120,23 @@ func auth(token string) {
 	fmt.Println(string(b))
 }
 
-func fetchOwnRepositories(ctx context.Context, client *github.Client) ([]*Repository, error) {
-	if wf.Cache.Exists(cacheKeyRepositories) {
-		var repositories struct {
-			Repositories []*Repository `json:"repositories"`
-		}
-		err := wf.Cache.LoadJSON(cacheKeyRepositories, &repositories)
-		if err != nil {
-			return nil, err
-		}
-
-		return repositories.Repositories, nil
+func fetchRepositoriesFromCache() ([]*Repository, error) {
+	if !wf.Cache.Exists(cacheKeyRepositories) {
+		return nil, ErrNoCache
 	}
 
+	var repositories struct {
+		Repositories []*Repository `json:"repositories"`
+	}
+	err := wf.Cache.LoadJSON(cacheKeyRepositories, &repositories)
+	if err != nil {
+		return nil, err
+	}
+
+	return repositories.Repositories, nil
+}
+
+func fetchOwnRepositories(ctx context.Context, client *github.Client, after string) ([]*Repository, *PageInfo, error) {
 	var ownRepositoriesQuery struct {
 		Viewer struct {
 			Repositories struct {
@@ -142,9 +156,15 @@ func fetchOwnRepositories(ctx context.Context, client *github.Client) ([]*Reposi
 			} `graphql:"repositories(first: 100, after: $after, affiliations:[OWNER, COLLABORATOR, ORGANIZATION_MEMBER], ownerAffiliations:[OWNER, ORGANIZATION_MEMBER, COLLABORATOR])"`
 		}
 	}
-	err := client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": (*github.String)(nil)})
+
+	var err error
+	if after == "" {
+		err = client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": (*github.String)(nil)})
+	} else {
+		err = client.Query(ctx, &ownRepositoriesQuery, map[string]interface{}{"after": github.String(after)})
+	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var repositories []*Repository
@@ -155,18 +175,47 @@ func fetchOwnRepositories(ctx context.Context, client *github.Client) ([]*Reposi
 		})
 	}
 
+	return repositories, &PageInfo{
+		StartCursor: string(ownRepositoriesQuery.Viewer.Repositories.PageInfo.StartCursor),
+		EndCursor:   string(ownRepositoriesQuery.Viewer.Repositories.PageInfo.EndCursor),
+		HasNextPage: bool(ownRepositoriesQuery.Viewer.Repositories.PageInfo.HasNextPage),
+	}, nil
+}
+
+func fetchOwnAllRepositories(ctx context.Context, client *github.Client) ([]*Repository, error) {
+	var repositories []*Repository
+	var pageAfter string
+	for {
+		r, pageInfo, err := fetchOwnRepositories(ctx, client, pageAfter)
+		if err != nil {
+			return nil, err
+		}
+
+		repositories = append(repositories, r...)
+
+		if !pageInfo.HasNextPage {
+			break
+		}
+
+		pageAfter = pageInfo.EndCursor
+	}
+
+	return repositories, nil
+}
+
+func cacheRepositories(repositories []*Repository) error {
 	j, err := json.Marshal(map[string]interface{}{"repositories": repositories})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	wf.Cache.Expired(cacheKeyRepositories, cacheMaxAge)
 	err = wf.Cache.Store(cacheKeyRepositories, j)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return repositories, nil
+	return nil
 }
 
 func search(searchQuery string) {
@@ -181,27 +230,58 @@ func search(searchQuery string) {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: authUser.Token})
 	httpClient := oauth2.NewClient(ctx, src)
 	client := github.NewClient(httpClient)
-	repositories, err := fetchOwnRepositories(ctx, client)
-	if err != nil {
-		wf.FatalError(err)
-		return
+
+	var repositories []*Repository
+	repositories, err = fetchRepositoriesFromCache()
+	if err == ErrNoCache {
+		var e error
+		repositories, e = fetchOwnAllRepositories(ctx, client)
+		if e != nil {
+			wf.FatalError(err)
+			return
+		}
+
+		feedbackRepositories(repositories, searchQuery)
+	} else {
+		if err != nil {
+			wf.FatalError(err)
+			return
+		}
+
+		if !feedbackRepositories(repositories, searchQuery) {
+			var e error
+			repositories, e = fetchOwnAllRepositories(ctx, client)
+			if e != nil {
+				wf.FatalError(err)
+				return
+			}
+			feedbackRepositories(repositories, searchQuery)
+		}
 	}
 
+	wf.SendFeedback()
+}
+
+func feedbackRepositories(repositories []*Repository, query string) bool {
 	for _, r := range repositories {
-		if !strings.Contains(r.Name, searchQuery) {
+		if !strings.Contains(r.Name, query) {
 			continue
 		}
 
 		b, err := json.Marshal(r)
 		if err != nil {
 			wf.FatalError(err)
-			return
+			return false
 		}
 
 		wf.NewItem(r.Name).Autocomplete(r.Name).Arg(string(b)).Valid(true)
 	}
 
-	wf.SendFeedback()
+	if len(wf.Feedback.Items) == 0 {
+		return false
+	}
+
+	return true
 }
 
 func action(operation string) {
