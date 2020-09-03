@@ -237,7 +237,13 @@ func search(searchQuery string) {
 		var e error
 		repositories, e = fetchOwnAllRepositories(ctx, client)
 		if e != nil {
-			wf.FatalError(err)
+			wf.FatalError(e)
+			return
+		}
+
+		e = cacheRepositories(repositories)
+		if e != nil {
+			wf.FatalError(e)
 			return
 		}
 
@@ -255,6 +261,13 @@ func search(searchQuery string) {
 				wf.FatalError(err)
 				return
 			}
+
+			e = cacheRepositories(repositories)
+			if e != nil {
+				wf.FatalError(e)
+				return
+			}
+
 			feedbackRepositories(repositories, searchQuery)
 		}
 	}
