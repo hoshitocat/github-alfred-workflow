@@ -272,6 +272,10 @@ func search(searchQuery string) {
 		}
 	}
 
+	if len(wf.Feedback.Items) == 0 {
+		wf.NewItem("Search on github.com").Autocomplete("Search on github.com").Arg("github.com " + searchQuery).Valid(true)
+	}
+
 	wf.SendFeedback()
 }
 
